@@ -22,7 +22,7 @@ def rgb_to_hex(rgb_color):
     return "#{:02x}{:02x}{:02x}".format(int(rgb_color[0]), int(rgb_color[1]), int(rgb_color[2]))
 
 # Fungsi utama untuk memproses gambar dan mengekstrak warna dominan dengan K-Means
-def process_image(image, min_k=1, max_k=5, threshold=0.005):
+def process_image(image, min_k=1, max_k=5, threshold=0.008):
     # Mengubah gambar menjadi rgb
     image_rgb = image.convert("RGB")
     img_array = np.array(image_rgb)
@@ -239,10 +239,10 @@ def main():
         # Menampilkan gambar asli dan hasil deteksi warna
         col1, col2 = st.columns(2)
         with col1:
-            st.image(image, caption="Original Image", use_container_width=True)
+            st.image(image, caption="Gambar Original", use_container_width=True)
         with col2:
             st.image(highlight_dominant_colors(image, result['top_colors']), 
-                     caption="Detected Dominant Colors", use_container_width=True)
+                     caption="Warna dominan terdeteksi", use_container_width=True)
         
         # Informasi gambar dan jumlah warna
         st.markdown(f"""
