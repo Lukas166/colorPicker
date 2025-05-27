@@ -60,7 +60,7 @@ def check_color_complexity(pixels):
         return None  # Gambar kompleks, gunakan algoritma penuh
 
 # Fungsi utama untuk memproses gambar dan mengekstrak warna dominan dengan K-Means
-def process_image(image, min_k=1, max_k=5, threshold=0.001):
+def process_image(image, min_k=1, max_k=5, threshold=0.0001):
     # OPTIMASI: Tidak resize gambar untuk analisis, proses semua pixel asli
     # processed_image = resize_image_for_processing(image)
     
