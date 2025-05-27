@@ -22,7 +22,7 @@ def rgb_to_hex(rgb_color):
     return "#{:02x}{:02x}{:02x}".format(int(rgb_color[0]), int(rgb_color[1]), int(rgb_color[2]))
 
 # Fungsi utama untuk memproses gambar dan mengekstrak warna dominan dengan K-Means
-def process_image(image, min_k=1, max_k=5, threshold=0.01):
+def process_image(image, min_k=1, max_k=5, threshold=0.1):
     # Mengubah gambar menjadi rgb
     image_rgb = image.convert("RGB")
     img_array = np.array(image_rgb)
@@ -193,37 +193,38 @@ def main():
         image = Image.open(uploaded_file)
         
         # Proses analisis gambar dan ekstraksi warna dominan
-        with st.spinner("Analyzing image colors..."):
+        with st.spinner("Menganalisis warna pada gambar..."):
             result = process_image(image)
             
-            # Menampilkan gambar asli dan hasil deteksi warna
-            col1, col2 = st.columns(2)
-            with col1:
-                st.image(image, caption="Original Image", use_container_width=True)
-            with col2:
-                st.image(highlight_dominant_colors(image, result['top_colors']), 
-                         caption="Detected Dominant Colors", use_container_width=True)
-            
-            # Informasi gambar dan jumlah warna
-            st.markdown(f"""
-            **Resolusi gambar:** {result['size'][0]} x {result['size'][1]} pixels  
-            **Total pixel yang dianalisis:** {result['total_pixels']:,}  
-            **Warna dominan terdeteksi (1-5):** {len(result['top_colors'])}
-            """)
-            
-            # Tampilkan palet warna dominan
-            create_color_palette(result['hex_colors'])
-            
-            # Tombol untuk mengunduh palet sebagai gambar
-            palette_img = generate_palette_image(result['hex_colors'])
-            st.download_button(
-                "Download Color Palette sebagai Gambar (.png)",
-                data=palette_img,
-                file_name="palette.png",
-                mime="image/png"
-            )
-            
-            # Tampilkan grafik 3D dari distribusi warna
+        # Menampilkan gambar asli dan hasil deteksi warna
+        col1, col2 = st.columns(2)
+        with col1:
+            st.image(image, caption="Original Image", use_container_width=True)
+        with col2:
+            st.image(highlight_dominant_colors(image, result['top_colors']), 
+                     caption="Detected Dominant Colors", use_container_width=True)
+        
+        # Informasi gambar dan jumlah warna
+        st.markdown(f"""
+        **Resolusi gambar:** {result['size'][0]} x {result['size'][1]} pixels  
+        **Total pixel yang dianalisis:** {result['total_pixels']:,}  
+        **Warna dominan terdeteksi (1-5):** {len(result['top_colors'])}
+        """)
+        
+        # Tampilkan palet warna dominan
+        create_color_palette(result['hex_colors'])
+        
+        # Tombol untuk mengunduh palet sebagai gambar
+        palette_img = generate_palette_image(result['hex_colors'])
+        st.download_button(
+            "Download Color Palette sebagai Gambar (.png)",
+            data=palette_img,
+            file_name="palette.png",
+            mime="image/png"
+        )
+        
+        # Tampilkan grafik 3D dari distribusi warna dengan loading terpisah
+        with st.spinner("Tunggu sebentar untuk grafik 3D K-Means Cluster..."):
             plot_3d_colors(result)
     else:
         st.info("Upload gambar untuk memulai!")
