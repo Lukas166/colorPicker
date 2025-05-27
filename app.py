@@ -22,7 +22,7 @@ def rgb_to_hex(rgb_color):
     return "#{:02x}{:02x}{:02x}".format(int(rgb_color[0]), int(rgb_color[1]), int(rgb_color[2]))
 
 # Fungsi utama untuk memproses gambar dan mengekstrak warna dominan dengan K-Means
-def process_image(image, min_k=1, max_k=5, threshold=0.01):
+def process_image(image, min_k=1, max_k=5, threshold=0.1):
     # Mengubah gambar menjadi rgb
     image_rgb = image.convert("RGB")
     img_array = np.array(image_rgb)
