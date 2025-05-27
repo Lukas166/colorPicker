@@ -21,52 +21,118 @@ st.set_page_config(
 def rgb_to_hex(rgb_color):
     return "#{:02x}{:02x}{:02x}".format(int(rgb_color[0]), int(rgb_color[1]), int(rgb_color[2]))
 
+# Fungsi untuk mengubah ukuran gambar agar lebih cepat diproses
+def resize_image_for_processing(image, max_size=800):
+    """Resize gambar untuk mempercepat proses clustering sambil mempertahankan aspect ratio"""
+    w, h = image.size
+    if max(w, h) > max_size:
+        ratio = max_size / max(w, h)
+        new_w, new_h = int(w * ratio), int(h * ratio)
+        return image.resize((new_w, new_h), Image.Resampling.LANCZOS)
+    return image
+
+# Fungsi untuk sampling pixel secara acak agar lebih efisien
+def sample_pixels(pixels, max_samples=50000):
+    """Ambil sample pixel secara acak untuk mempercepat K-Means clustering"""
+    if len(pixels) > max_samples:
+        indices = np.random.choice(len(pixels), max_samples, replace=False)
+        return pixels[indices]
+    return pixels
+
+# Fungsi untuk mengecek kompleksitas warna dalam gambar
+def check_color_complexity(pixels):
+    """Cek apakah gambar memiliki variasi warna yang cukup untuk clustering"""
+    std_dev = np.std(pixels, axis=0)
+    mean_std = np.mean(std_dev)
+    
+    # Jika variasi warna sangat kecil, kemungkinan gambar monokrom
+    if mean_std < 10:
+        return 1  # Gambar hampir monokrom, cukup 1 warna
+    elif mean_std < 25:
+        return 2  # Gambar sederhana, cukup 2 warna
+    elif mean_std < 50:
+        return 3  # Gambar moderate, mulai dari 3 warna
+    else:
+        return None  # Gambar kompleks, gunakan algoritma penuh
+
 # Fungsi utama untuk memproses gambar dan mengekstrak warna dominan dengan K-Means
-def process_image(image, min_k=1, max_k=5, threshold=0.1):
+def process_image(image, min_k=1, max_k=5, threshold=0.01):
+    # Resize gambar untuk mempercepat proses
+    processed_image = resize_image_for_processing(image)
+    
     # Mengubah gambar menjadi rgb
-    image_rgb = image.convert("RGB")
+    image_rgb = processed_image.convert("RGB")
     img_array = np.array(image_rgb)
     pixels = img_array.reshape(-1, 3)
     
-    # Mencari nilai k optimal
-    best_k = max_k
-    for k in range(max_k, min_k - 1, -1):
-        kmeans = KMeans(n_clusters=k, random_state=42, n_init=10).fit(pixels)
-        counts = Counter(kmeans.labels_)
-        proportions = np.array(list(counts.values())) / len(pixels)
-        if all(p >= threshold for p in proportions):
-            best_k = k
-            break
+    # Sample pixel untuk mempercepat clustering
+    sampled_pixels = sample_pixels(pixels)
     
-    # Clustering final dengan jumlah k terbaik
-    kmeans = KMeans(n_clusters=best_k, random_state=42, n_init=10).fit(pixels)
-    counts = Counter(kmeans.labels_)
-
+    # Cek kompleksitas warna gambar untuk optimasi
+    suggested_k = check_color_complexity(sampled_pixels)
+    
+    best_k = max_k
+    best_kmeans = None
+    
+    # Jika gambar sederhana, langsung gunakan k yang disarankan
+    if suggested_k is not None and suggested_k <= 2:
+        kmeans = KMeans(n_clusters=suggested_k, random_state=42, n_init=10).fit(sampled_pixels)
+        best_k = suggested_k
+        best_kmeans = kmeans
+    else:
+        # Untuk gambar kompleks, mulai dari k=3 dan naik (lebih efisien)
+        for k in range(3, max_k + 1):
+            kmeans = KMeans(n_clusters=k, random_state=42, n_init=10).fit(sampled_pixels)
+            counts = Counter(kmeans.labels_)
+            proportions = np.array(list(counts.values())) / len(sampled_pixels)
+            if all(p >= threshold for p in proportions):
+                best_k = k
+                best_kmeans = kmeans
+                break
+        
+        # Jika tidak ada k yang cocok dari 3-5, coba k=2 dan k=1
+        if best_kmeans is None:
+            for k in [2, 1]:
+                kmeans = KMeans(n_clusters=k, random_state=42, n_init=10).fit(sampled_pixels)
+                counts = Counter(kmeans.labels_)
+                proportions = np.array(list(counts.values())) / len(sampled_pixels)
+                if all(p >= threshold for p in proportions):
+                    best_k = k
+                    best_kmeans = kmeans
+                    break
+    
+    # Gunakan hasil K-Means yang sudah ada (tidak perlu clustering ulang)
+    if best_kmeans is None:
+        best_kmeans = KMeans(n_clusters=best_k, random_state=42, n_init=10).fit(sampled_pixels)
+    
+    counts = Counter(best_kmeans.labels_)
     sorted_indices = np.argsort([count for label, count in counts.most_common()])[::-1]
 
-    top_colors = kmeans.cluster_centers_[sorted_indices]
+    top_colors = best_kmeans.cluster_centers_[sorted_indices]
     hex_colors = [rgb_to_hex(color) for color in top_colors]
 
     label_mapping = {original_idx: dominant_idx 
                     for dominant_idx, original_idx in enumerate(sorted_indices)}
     
-    mapped_labels = np.array([label_mapping[label] for label in kmeans.labels_])
+    mapped_labels = np.array([label_mapping[label] for label in best_kmeans.labels_])
     
     return {
         'top_colors': top_colors,
         'hex_colors': hex_colors,
-        'pixels': pixels,
+        'pixels': sampled_pixels,  # Gunakan sampled pixels untuk konsistensi
         'labels': mapped_labels,
-        'original_centers': kmeans.cluster_centers_,
-        'size': image.size,
-        'total_pixels': len(pixels),
+        'original_centers': best_kmeans.cluster_centers_,
+        'size': image.size,  # Ukuran gambar asli
+        'total_pixels': len(pixels),  # Total pixel gambar asli
         'label_mapping': label_mapping,
         'sorted_indices': sorted_indices
     }
     
 # Fungsi untuk menandai area warna dominan di dalam gambar
 def highlight_dominant_colors(image, dominant_colors):
-    img_array = np.array(image.convert("RGB"))
+    # Resize gambar untuk mempercepat proses highlight
+    processed_image = resize_image_for_processing(image, max_size=600)
+    img_array = np.array(processed_image.convert("RGB"))
     output = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
     
     for i, color in enumerate(dominant_colors):
@@ -193,7 +259,7 @@ def main():
         image = Image.open(uploaded_file)
         
         # Proses analisis gambar dan ekstraksi warna dominan
-        with st.spinner("Menganalisis warna pada gambar..."):
+        with st.spinner("Menganalisis detail gambar..."):
             result = process_image(image)
             
         # Menampilkan gambar asli dan hasil deteksi warna
@@ -224,7 +290,7 @@ def main():
         )
         
         # Tampilkan grafik 3D dari distribusi warna dengan loading terpisah
-        with st.spinner("Tunggu sebentar untuk grafik 3D K-Means Cluster..."):
+        with st.spinner("Tunggu sebentar untuk menghasilkan grafik 3D K-Means Cluster..."):
             plot_3d_colors(result)
     else:
         st.info("Upload gambar untuk memulai!")
