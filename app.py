@@ -11,7 +11,7 @@ import io
 
 # Konfigurasi halaman Streamlit
 st.set_page_config(
-    page_title="Color Palette Generator",
+    page_title="Image Color Palette Generator",
     page_icon="🎨",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -224,7 +224,7 @@ def main():
         )
         
         # Tampilkan grafik 3D dari distribusi warna dengan loading terpisah
-        with st.spinner("Sedang membuat grafik 3D K-Means Cluster..."):
+        with st.spinner("Generating 'distribution chart..."):
             plot_3d_colors(result)
     else:
         st.info("Upload gambar untuk memulai!")
