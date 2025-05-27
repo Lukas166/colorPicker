@@ -2,7 +2,7 @@
 import streamlit as st
 import numpy as np
 import cv2
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans, MiniBatchKMeans
 from collections import Counter
 from PIL import Image, ImageDraw, ImageFont
 import pandas as pd
@@ -33,16 +33,20 @@ def resize_image_for_processing(image, max_size=800):
 
 # Fungsi untuk sampling pixel secara acak agar lebih efisien
 def sample_pixels(pixels, max_samples=50000):
-    """Ambil sample pixel secara acak untuk mempercepat K-Means clustering"""
-    if len(pixels) > max_samples:
-        indices = np.random.choice(len(pixels), max_samples, replace=False)
-        return pixels[indices]
-    return pixels
+    # OPTIMASI: Tidak lagi sampling, return semua pixels untuk analisis lengkap
+    return pixels.astype(np.float32)  # Convert ke float32 untuk optimasi memory dan speed
 
 # Fungsi untuk mengecek kompleksitas warna dalam gambar
 def check_color_complexity(pixels):
-    """Cek apakah gambar memiliki variasi warna yang cukup untuk clustering"""
-    std_dev = np.std(pixels, axis=0)
+    # OPTIMASI: Gunakan sample kecil hanya untuk cek kompleksitas
+    sample_size = min(5000, len(pixels))
+    if len(pixels) > sample_size:
+        indices = np.random.choice(len(pixels), sample_size, replace=False)
+        sample_pixels = pixels[indices]
+    else:
+        sample_pixels = pixels
+        
+    std_dev = np.std(sample_pixels, axis=0)
     mean_std = np.mean(std_dev)
     
     # Jika variasi warna sangat kecil, kemungkinan gambar monokrom
@@ -57,34 +61,75 @@ def check_color_complexity(pixels):
 
 # Fungsi utama untuk memproses gambar dan mengekstrak warna dominan dengan K-Means
 def process_image(image, min_k=1, max_k=5, threshold=0.001):
-    # Resize gambar untuk mempercepat proses
-    processed_image = resize_image_for_processing(image)
+    # OPTIMASI: Tidak resize gambar untuk analisis, proses semua pixel asli
+    # processed_image = resize_image_for_processing(image)
     
     # Mengubah gambar menjadi rgb
-    image_rgb = processed_image.convert("RGB")
+    image_rgb = image.convert("RGB")
     img_array = np.array(image_rgb)
     pixels = img_array.reshape(-1, 3)
     
-    # Sample pixel untuk mempercepat clustering
-    sampled_pixels = sample_pixels(pixels)
+    # OPTIMASI: Proses semua pixel dengan optimasi kecepatan
+    all_pixels = sample_pixels(pixels)  # Sekarang return semua pixels yang dioptimasi
     
     # Cek kompleksitas warna gambar untuk optimasi
-    suggested_k = check_color_complexity(sampled_pixels)
+    suggested_k = check_color_complexity(all_pixels)
     
     best_k = max_k
     best_kmeans = None
     
+    # OPTIMASI: Pilih algoritma berdasarkan ukuran data
+    use_minibatch = len(all_pixels) > 100000  # Gunakan MiniBatch untuk gambar besar
+    
     # Jika gambar sederhana, langsung gunakan k yang disarankan
     if suggested_k is not None and suggested_k <= 2:
-        kmeans = KMeans(n_clusters=suggested_k, random_state=42, n_init=10).fit(sampled_pixels)
+        if use_minibatch:
+            # OPTIMASI: MiniBatchKMeans untuk gambar besar
+            kmeans = MiniBatchKMeans(
+                n_clusters=suggested_k, 
+                random_state=42, 
+                batch_size=min(1000, len(all_pixels)//10),
+                max_iter=100,
+                n_init=3
+            ).fit(all_pixels)
+        else:
+            # KMeans biasa untuk gambar kecil
+            kmeans = KMeans(
+                n_clusters=suggested_k, 
+                random_state=42, 
+                n_init=5,
+                max_iter=100,
+                algorithm='elkan',
+                n_jobs=-1
+            ).fit(all_pixels)
         best_k = suggested_k
         best_kmeans = kmeans
     else:
         # Untuk gambar kompleks, mulai dari k=3 dan naik (lebih efisien)
         for k in range(3, max_k + 1):
-            kmeans = KMeans(n_clusters=k, random_state=42, n_init=10).fit(sampled_pixels)
+            if use_minibatch:
+                # OPTIMASI: MiniBatchKMeans untuk kecepatan tinggi
+                kmeans = MiniBatchKMeans(
+                    n_clusters=k, 
+                    random_state=42,
+                    batch_size=min(1000, len(all_pixels)//10),
+                    max_iter=100,
+                    n_init=3,
+                    reassignment_ratio=0.01
+                ).fit(all_pixels)
+            else:
+                # KMeans biasa dengan optimasi
+                kmeans = KMeans(
+                    n_clusters=k, 
+                    random_state=42, 
+                    n_init=5,
+                    max_iter=100,
+                    algorithm='elkan',
+                    n_jobs=-1
+                ).fit(all_pixels)
+                
             counts = Counter(kmeans.labels_)
-            proportions = np.array(list(counts.values())) / len(sampled_pixels)
+            proportions = np.array(list(counts.values())) / len(all_pixels)
             if all(p >= threshold for p in proportions):
                 best_k = k
                 best_kmeans = kmeans
@@ -93,9 +138,25 @@ def process_image(image, min_k=1, max_k=5, threshold=0.001):
         # Jika tidak ada k yang cocok dari 3-5, coba k=2 dan k=1
         if best_kmeans is None:
             for k in [2, 1]:
-                kmeans = KMeans(n_clusters=k, random_state=42, n_init=10).fit(sampled_pixels)
+                if use_minibatch:
+                    kmeans = MiniBatchKMeans(
+                        n_clusters=k, 
+                        random_state=42,
+                        batch_size=min(1000, len(all_pixels)//5),
+                        max_iter=50,
+                        n_init=3
+                    ).fit(all_pixels)
+                else:
+                    kmeans = KMeans(
+                        n_clusters=k, 
+                        random_state=42, 
+                        n_init=5,
+                        max_iter=50,
+                        n_jobs=-1
+                    ).fit(all_pixels)
+                    
                 counts = Counter(kmeans.labels_)
-                proportions = np.array(list(counts.values())) / len(sampled_pixels)
+                proportions = np.array(list(counts.values())) / len(all_pixels)
                 if all(p >= threshold for p in proportions):
                     best_k = k
                     best_kmeans = kmeans
@@ -103,7 +164,22 @@ def process_image(image, min_k=1, max_k=5, threshold=0.001):
     
     # Gunakan hasil K-Means yang sudah ada (tidak perlu clustering ulang)
     if best_kmeans is None:
-        best_kmeans = KMeans(n_clusters=best_k, random_state=42, n_init=10).fit(sampled_pixels)
+        if use_minibatch:
+            best_kmeans = MiniBatchKMeans(
+                n_clusters=best_k, 
+                random_state=42,
+                batch_size=min(1000, len(all_pixels)//5),
+                max_iter=50,
+                n_init=3
+            ).fit(all_pixels)
+        else:
+            best_kmeans = KMeans(
+                n_clusters=best_k, 
+                random_state=42, 
+                n_init=5,
+                max_iter=50,
+                n_jobs=-1
+            ).fit(all_pixels)
     
     counts = Counter(best_kmeans.labels_)
     sorted_indices = np.argsort([count for label, count in counts.most_common()])[::-1]
@@ -119,7 +195,7 @@ def process_image(image, min_k=1, max_k=5, threshold=0.001):
     return {
         'top_colors': top_colors,
         'hex_colors': hex_colors,
-        'pixels': sampled_pixels,  # Gunakan sampled pixels untuk konsistensi
+        'pixels': all_pixels,  # OPTIMASI: Semua pixels yang sudah diproses
         'labels': mapped_labels,
         'original_centers': best_kmeans.cluster_centers_,
         'size': image.size,  # Ukuran gambar asli
@@ -194,7 +270,8 @@ def plot_3d_colors(result):
     
     # Plot titik-titik pixel
     if 'pixels' in result and 'labels' in result:
-        sample_size = min(2000, len(result['pixels']))
+        # OPTIMASI: Sample untuk visualisasi 3D agar tidak lag, tapi analisis tetap full
+        sample_size = min(3000, len(result['pixels']))
         indices = np.random.choice(len(result['pixels']), sample_size, replace=False)
         sampled_pixels = result['pixels'][indices]
         sampled_labels = result['labels'][indices]
