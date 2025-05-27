@@ -21,10 +21,8 @@ st.set_page_config(
 def rgb_to_hex(rgb_color):
     return "#{:02x}{:02x}{:02x}".format(int(rgb_color[0]), int(rgb_color[1]), int(rgb_color[2]))
 
-
-
 # Fungsi utama untuk memproses gambar dan mengekstrak warna dominan dengan K-Means
-def process_image(image, min_k=1, max_k=5, threshold=0.01):
+def process_image(image, min_k=1, max_k=5, threshold=0.005):
     # Mengubah gambar menjadi rgb
     image_rgb = image.convert("RGB")
     img_array = np.array(image_rgb)
@@ -237,7 +235,7 @@ def main():
         image = Image.open(uploaded_file)
         
         # Proses analisis gambar dan ekstraksi warna dominan
-        with st.spinner("Analyzing image colors..."):
+        with st.spinner("Menganalisis detail pada gambar..."):
             result = process_image(image)
             
         # Menampilkan gambar asli dan hasil deteksi warna
@@ -268,7 +266,7 @@ def main():
         )
         
         # Tampilkan grafik 3D dari distribusi warna dengan loading terpisah
-        with st.spinner("Generating 3D color distribution chart..."):
+        with st.spinner("Sedang membuat grafik 3D K-Means Cluster..."):
             plot_3d_colors(result)
     else:
         st.info("Upload gambar untuk memulai!")
