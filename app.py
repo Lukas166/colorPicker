@@ -2,7 +2,7 @@
 import streamlit as st
 import numpy as np
 import cv2
-from sklearn.cluster import KMeans, MiniBatchKMeans
+from sklearn.cluster import KMeans
 from collections import Counter
 from PIL import Image, ImageDraw, ImageFont
 import pandas as pd
@@ -22,40 +22,16 @@ def rgb_to_hex(rgb_color):
     return "#{:02x}{:02x}{:02x}".format(int(rgb_color[0]), int(rgb_color[1]), int(rgb_color[2]))
 
 # Fungsi utama untuk memproses gambar dan mengekstrak warna dominan dengan K-Means
-def process_image(image, min_k=1, max_k=5, threshold=0.1):
+def process_image(image, min_k=1, max_k=5, threshold=0.01):
     # Mengubah gambar menjadi rgb
     image_rgb = image.convert("RGB")
     img_array = np.array(image_rgb)
     pixels = img_array.reshape(-1, 3)
     
-    # OPTIMASI: Convert ke float32 untuk kecepatan dan efisiensi memory
-    pixels = pixels.astype(np.float32)
-    
-    # OPTIMASI: Pilih algoritma berdasarkan ukuran data untuk kecepatan optimal
-    use_minibatch = len(pixels) > 100000
-    
     # Mencari nilai k optimal
     best_k = max_k
     for k in range(max_k, min_k - 1, -1):
-        if use_minibatch:
-            # MiniBatchKMeans untuk gambar besar - 5-10x lebih cepat
-            kmeans = MiniBatchKMeans(
-                n_clusters=k, 
-                random_state=42, 
-                batch_size=min(1000, len(pixels)//10),
-                max_iter=100,
-                n_init=3
-            ).fit(pixels)
-        else:
-            # KMeans dengan optimasi untuk gambar kecil-menengah
-            kmeans = KMeans(
-                n_clusters=k, 
-                random_state=42, 
-                n_init=5,
-                max_iter=100,
-                algorithm='elkan',
-            ).fit(pixels)
-            
+        kmeans = KMeans(n_clusters=k, random_state=42, n_init=10).fit(pixels)
         counts = Counter(kmeans.labels_)
         proportions = np.array(list(counts.values())) / len(pixels)
         if all(p >= threshold for p in proportions):
@@ -63,23 +39,7 @@ def process_image(image, min_k=1, max_k=5, threshold=0.1):
             break
     
     # Clustering final dengan jumlah k terbaik
-    if use_minibatch:
-        kmeans = MiniBatchKMeans(
-            n_clusters=best_k, 
-            random_state=42, 
-            batch_size=min(1000, len(pixels)//10),
-            max_iter=150,
-            n_init=5
-        ).fit(pixels)
-    else:
-        kmeans = KMeans(
-            n_clusters=best_k, 
-            random_state=42, 
-            n_init=10,
-            max_iter=300,
-            algorithm='elkan',
-        ).fit(pixels)
-    
+    kmeans = KMeans(n_clusters=best_k, random_state=42, n_init=10).fit(pixels)
     counts = Counter(kmeans.labels_)
 
     sorted_indices = np.argsort([count for label, count in counts.most_common()])[::-1]
@@ -233,16 +193,16 @@ def main():
         image = Image.open(uploaded_file)
         
         # Proses analisis gambar dan ekstraksi warna dominan
-        with st.spinner("Menganalisis detail pada gambar..."):
+        with st.spinner("Menganalisis detail gambar..."):
             result = process_image(image)
             
         # Menampilkan gambar asli dan hasil deteksi warna
         col1, col2 = st.columns(2)
         with col1:
-            st.image(image, caption="Gambar Original", use_container_width=True)
+            st.image(image, caption="Original Image", use_container_width=True)
         with col2:
             st.image(highlight_dominant_colors(image, result['top_colors']), 
-                     caption="Warna dominan terdeteksi", use_container_width=True)
+                     caption="Detected Dominant Colors", use_container_width=True)
         
         # Informasi gambar dan jumlah warna
         st.markdown(f"""
