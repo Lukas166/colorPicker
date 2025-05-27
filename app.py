@@ -54,7 +54,6 @@ def process_image(image, min_k=1, max_k=5, threshold=0.005):
                 n_init=5,
                 max_iter=100,
                 algorithm='elkan',
-                n_jobs=-1
             ).fit(pixels)
             
         counts = Counter(kmeans.labels_)
@@ -79,7 +78,6 @@ def process_image(image, min_k=1, max_k=5, threshold=0.005):
             n_init=10,
             max_iter=300,
             algorithm='elkan',
-            n_jobs=-1
         ).fit(pixels)
     
     counts = Counter(kmeans.labels_)
